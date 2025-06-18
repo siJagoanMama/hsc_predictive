@@ -17,16 +17,20 @@ class DatabaseSeeder extends Seeder
     {
          User::Create([
             "name" => "HaydarAdmin",
-            "email" => "haydarAdmin@example",
+            "email" => "haydarAdmin@example.com",
             "role" => UserRole::Admin,
             'password' => Hash::make("haydar123"), 
         ]);
 
          User::Create([
             "name" => "Haydar SuperAdmin",
-            "email" => "haydarSuperAdmin@example",
+            "email" => "haydarSuperAdmin@example.com",
             "role" => UserRole::SuperAdmin,
             'password' => Hash::make("haydar123"), 
+        ]);
+
+        $this->call([
+            CallerIdSeeder::class,
         ]);
     }
 }
