@@ -30,6 +30,10 @@ Route::middleware(['auth', 'verified', 'role:SuperAdmin,Admin'])->group(function
     Route::get('/reports/call-reports', [CallReportController::class, 'index'])->name('reports.call-reports');
     Route::post('/reports/generate', [CallReportController::class, 'generate'])->name('reports.generate');
     Route::get('/reports/campaign/{campaign}', [CallReportController::class, 'campaignReport'])->name('reports.campaign');
+    
+    // Excel Export Routes
+    Route::get('/reports/export/calls', [CallReportController::class, 'exportCallReports'])->name('reports.export.calls');
+    Route::get('/reports/export/campaign/{campaign}', [CallReportController::class, 'exportCampaignSummary'])->name('reports.export.campaign');
 });
 
 Route::middleware(['auth', 'verified', 'role:SuperAdmin'])->group(function () {

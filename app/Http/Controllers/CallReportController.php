@@ -5,10 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\Campaign;
 use App\Models\CallReport;
 use App\Models\Call;
+use App\Models\Agent;
+use App\Exports\CallReportExport;
+use App\Exports\CampaignSummaryExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Carbon\Carbon;
+use Maatwebsite\Excel\Facades\Excel;
 
 class CallReportController extends Controller
 {
@@ -36,11 +40,87 @@ class CallReportController extends Controller
         $reports = $query->paginate(15);
 
         $campaigns = Campaign::select('id', 'campaign_name')->get();
+        $agents = Agent::select('id', 'name')->get();
 
         return Inertia::render('reports/call-reports', [
             'reports' => $reports,
             'campaigns' => $campaigns,
+            'agents' => $agents,
             'filters' => $request->only(['campaign_id', 'agent_id', 'date_from', 'date_to']),
+        ]);
+    }
+
+    public function exportCallReports(Request $request)
+    {
+        $filters = $request->only(['campaign_id', 'agent_id', 'date_from', 'date_to', 'status']);
+        
+        $filename = 'call_reports_' . date('Y-m-d_H-i-s') . '.xlsx';
+        
+        return Excel::download(new CallReportExport($filters), $filename);
+    }
+
+    public function exportCampaignSummary(Campaign $campaign)
+    {
+        $filename = 'campaign_summary_' . str_replace(' ', '_', $campaign->campaign_name) . '_' . date('Y-m-d_H-i-s') . '.xlsx';
+        
+        return Excel::download(new CampaignSummaryExport($campaign), $filename);
+    }
+
+    public function campaignReport(Campaign $campaign)
+    {
+        $stats = [
+            'total_numbers' => $campaign->nasbahs()->count(),
+            'called_numbers' => $campaign->nasbahs()->where('is_called', true)->count(),
+            'remaining_numbers' => $campaign->nasbahs()->where('is_called', false)->count(),
+            'total_calls' => $campaign->calls()->count(),
+            'answered_calls' => $campaign->calls()->where('status', 'answered')->count(),
+            'failed_calls' => $campaign->calls()->where('status', 'failed')->count(),
+            'busy_calls' => $campaign->calls()->where('status', 'busy')->count(),
+            'no_answer_calls' => $campaign->calls()->where('status', 'no_answer')->count(),
+        ];
+
+        // Daily call statistics for the last 30 days
+        $dailyStats = Call::where('campaign_id', $campaign->id)
+            ->where('call_started_at', '>=', Carbon::now()->subDays(30))
+            ->selectRaw('
+                DATE(call_started_at) as date,
+                COUNT(*) as total_calls,
+                SUM(CASE WHEN status = "answered" THEN 1 ELSE 0 END) as answered_calls,
+                SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) as failed_calls,
+                SUM(CASE WHEN status = "busy" THEN 1 ELSE 0 END) as busy_calls,
+                SUM(CASE WHEN status = "no_answer" THEN 1 ELSE 0 END) as no_answer_calls
+            ')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        // Agent performance
+        $agentPerformance = Call::where('campaign_id', $campaign->id)
+            ->with('agent')
+            ->selectRaw('
+                agent_id,
+                COUNT(*) as total_calls,
+                SUM(CASE WHEN status = "answered" THEN 1 ELSE 0 END) as answered_calls,
+                SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) as failed_calls,
+                SUM(CASE WHEN duration IS NOT NULL THEN duration ELSE 0 END) as total_talk_time,
+                AVG(CASE WHEN duration IS NOT NULL THEN duration ELSE 0 END) as avg_talk_time
+            ')
+            ->groupBy('agent_id')
+            ->get();
+
+        // Recent calls
+        $recentCalls = Call::where('campaign_id', $campaign->id)
+            ->with(['agent', 'nasbah', 'callerId'])
+            ->orderBy('call_started_at', 'desc')
+            ->limit(50)
+            ->get();
+
+        return Inertia::render('reports/campaign-report', [
+            'campaign' => $campaign,
+            'stats' => $stats,
+            'dailyStats' => $dailyStats,
+            'agentPerformance' => $agentPerformance,
+            'recentCalls' => $recentCalls,
         ]);
     }
 
