@@ -18,10 +18,10 @@ class CallerIdSeeder extends Seeder
         ];
 
         foreach ($callerIds as $number) {
-            CallerId::create([
-                'number' => $number,
-                'is_active' => true,
-            ]);
+            CallerId::updateOrCreate(
+                ['number' => $number],
+                ['is_active' => true]
+            );
         }
     }
 }

@@ -23,25 +23,47 @@ export function CampaignControls({ campaign, onStatusChange }: CampaignControlsP
         setIsLoading(true);
         
         try {
+            // Get CSRF token from meta tag
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            
+            if (!csrfToken) {
+                throw new Error('CSRF token not found');
+            }
+
             const response = await fetch(`/api/campaigns/${campaign.id}/${action}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
                 },
             });
 
             if (response.ok) {
                 const data = await response.json();
                 onStatusChange?.(data.campaign);
-                router.reload({ only: ['campaigns'] });
+                
+                // Show success message
+                alert(`Campaign ${action} successfully!`);
+                
+                // Reload page data
+                router.reload({ only: ['campaigns', 'campaign'] });
             } else {
-                const error = await response.json();
-                alert(error.message || 'Action failed');
+                const errorText = await response.text();
+                let errorMessage = 'Action failed';
+                
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.message || errorMessage;
+                } catch {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                
+                alert(errorMessage);
             }
         } catch (error) {
             console.error('Action failed:', error);
-            alert('Action failed');
+            alert(`Action failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsLoading(false);
         }
@@ -56,8 +78,16 @@ export function CampaignControls({ campaign, onStatusChange }: CampaignControlsP
             stopped: 'destructive',
         } as const;
 
+        const colors = {
+            pending: 'bg-gray-100 text-gray-800',
+            running: 'bg-green-100 text-green-800',
+            paused: 'bg-yellow-100 text-yellow-800',
+            completed: 'bg-blue-100 text-blue-800',
+            stopped: 'bg-red-100 text-red-800',
+        } as const;
+
         return (
-            <Badge variant={variants[status as keyof typeof variants] || 'secondary'}>
+            <Badge variant={variants[status as keyof typeof variants] || 'secondary'} className={colors[status as keyof typeof colors]}>
                 {status.toUpperCase()}
             </Badge>
         );
@@ -68,18 +98,19 @@ export function CampaignControls({ campaign, onStatusChange }: CampaignControlsP
             {getStatusBadge(campaign.status)}
             
             <div className="flex gap-1">
-                {campaign.status === 'pending' || campaign.status === 'stopped' ? (
+                {(campaign.status === 'pending' || campaign.status === 'stopped') && (
                     <Button
                         size="sm"
                         onClick={() => handleAction('start')}
                         disabled={isLoading}
                         className="h-8 w-8 p-0"
+                        title="Start Campaign"
                     >
                         <Play className="h-4 w-4" />
                     </Button>
-                ) : null}
+                )}
 
-                {campaign.status === 'running' ? (
+                {campaign.status === 'running' && (
                     <>
                         <Button
                             size="sm"
@@ -87,6 +118,7 @@ export function CampaignControls({ campaign, onStatusChange }: CampaignControlsP
                             onClick={() => handleAction('pause')}
                             disabled={isLoading}
                             className="h-8 w-8 p-0"
+                            title="Pause Campaign"
                         >
                             <Pause className="h-4 w-4" />
                         </Button>
@@ -96,19 +128,21 @@ export function CampaignControls({ campaign, onStatusChange }: CampaignControlsP
                             onClick={() => handleAction('stop')}
                             disabled={isLoading}
                             className="h-8 w-8 p-0"
+                            title="Stop Campaign"
                         >
                             <Square className="h-4 w-4" />
                         </Button>
                     </>
-                ) : null}
+                )}
 
-                {campaign.status === 'paused' ? (
+                {campaign.status === 'paused' && (
                     <>
                         <Button
                             size="sm"
                             onClick={() => handleAction('resume')}
                             disabled={isLoading}
                             className="h-8 w-8 p-0"
+                            title="Resume Campaign"
                         >
                             <Play className="h-4 w-4" />
                         </Button>
@@ -118,11 +152,12 @@ export function CampaignControls({ campaign, onStatusChange }: CampaignControlsP
                             onClick={() => handleAction('stop')}
                             disabled={isLoading}
                             className="h-8 w-8 p-0"
+                            title="Stop Campaign"
                         >
                             <Square className="h-4 w-4" />
                         </Button>
                     </>
-                ) : null}
+                )}
             </div>
         </div>
     );
